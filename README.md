@@ -1,4 +1,4 @@
-# Trello-organizing
+# Trello-expanded
 
 A kód feladata, hogy megszámolja a Trello-ban lévő már elvégzett és elfogadott feladatokat, a megfelelő cég és feladat fontossági súlyozása alapján.
 
