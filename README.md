@@ -3,7 +3,7 @@
 A kód feladata, hogy megszámolja a Trello-ban lévő már elvégzett és elfogadott feladatokat, a megfelelő cég és feladat fontossági súlyozása alapján.
 
 ## Használat
-A kód használata előtt ki kell tölteni az appsettings.json fájlt az adatbázis connection stringjével, a trello user secrettel, az API kulccsal és a táblázat azonosítójával.
+A kód használata előtt ki kell tölteni az appsettings.json fájlt az adatbázis connection stringjével, a trello user secrettel, az API kulccsal.
 
 ```json
 {
@@ -11,7 +11,7 @@ A kód használata előtt ki kell tölteni az appsettings.json fájlt az adatbá
     "connectionString": "CONNECTION_STRING_HELYE",
     "userSecret": "USER_SECRET_HELYE",
     "apiKey": "API_KEY_HELYE",
-    "boardId": "TRELLO_BOARD_ID_HELYE"
+    ....
   }
 }
 ```
@@ -33,3 +33,12 @@ A kód működése során összehasonlítja az újonnan lekért adatokat a sajá
 - [x] Task elfogadása (új súlyozással/súlyozás nélkül)
 ### Egyéb>
 - [x] Több label esetén a legmagasabb prioritásút veszi
+
+## Edit:
+
+### Új funckió: Excel fájlba adatok kigyűjtése
+- minden lefutáskor létehoz a '\bin\Debug\net6.0' útvonalon egy 'data.xlsx' Excel táblázatot
+- az excelbe két sheet található, egyikben az elvégzett feladatok száma, hónap, cég, és súlyozás szerint csoportosítva, a másik sheetben a feladatok listája található
+
+### Bug fix:
+- új listába mozgatott feladatok kezelése
