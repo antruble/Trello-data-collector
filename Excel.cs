@@ -360,8 +360,9 @@ namespace Trello
                         worksheet.Cells[excelRow, 3].Value = dbRow.Date.ToString("yyyy-MM-dd");
                         worksheet.Cells[excelRow, 4].Value = dbRow.Weight;
                         worksheet.Cells[excelRow, 5].Value = dbRow.IsComplete.ToString();
-                        worksheet.Cells[excelRow, 6].Value = dbRow.ListId;
-                        
+                        string? shop = Utilities.GetShopByListId(dbRow.ListId ?? throw new Exception("ListID can't be null"));
+                        worksheet.Cells[excelRow, 6].Value = shop ?? "EGYÉB";
+
                         excelRow++;
                     }
 
@@ -393,19 +394,13 @@ namespace Trello
 
         static void CreateBaseCardsSheet(ExcelWorksheet sheet)
         {
-            // JELENLEGI EXCEL SOR
-            int excelRow = 1;
-
             // FEJLÉCEK KITÖLTÉSE
-            sheet.Cells[excelRow, 1].Value = "ID";
-            sheet.Cells[excelRow, 2].Value = "Név";
-            sheet.Cells[excelRow, 3].Value = "Dátum";
-            sheet.Cells[excelRow, 4].Value = "Súlyozás";
-            sheet.Cells[excelRow, 5].Value = "Befejezett?";
-            sheet.Cells[excelRow, 6].Value = "Lista ID";
-
-            // ÚJ SOR
-            excelRow++;
+            sheet.Cells[1, 1].Value = "ID";
+            sheet.Cells[1, 2].Value = "Név";
+            sheet.Cells[1, 3].Value = "Dátum";
+            sheet.Cells[1, 4].Value = "Súlyozás";
+            sheet.Cells[1, 5].Value = "Befejezett?";
+            sheet.Cells[1, 6].Value = "Cég";
         }
     }
 }

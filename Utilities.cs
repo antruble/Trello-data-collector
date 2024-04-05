@@ -25,7 +25,7 @@ namespace Trello
                 row = dbContext.AddDateToDB(year, month);
 
             // SHOP LEKÉRDEZÉSE TRELLO LISTA ID ALAPJÁN
-            string? shop = getShopByListId(card.ListId);
+            string? shop = GetShopByListId(card.ListId);
 
             // HA A TRELLO LISTA ID ORDERSHEZ TARTOZIK -> TÖBB SHOP TASKJAI SZEREPELNEK BENNE ->
             // --> KÁRTYA NEVÉBEN SZEREPLŐ AZONOSÍTÓ ALAPJÁN KELL LEKÉRDEZNI A SHOPOT
@@ -134,7 +134,7 @@ namespace Trello
         public static void UpdateShopCounters(Completed date, string listId, string cardName, int weight, string operation = "ADD")
         {
             // SHOP LEKÉRDEZÉSE TRELLO LISTA ID ALAPJÁN
-            string? shop = getShopByListId(listId);
+            string? shop = GetShopByListId(listId);
 
             // HA A TRELLO LISTA ID ORDERSHEZ TARTOZIK -> TÖBB SHOP TASKJAI SZEREPELNEK BENNE ->
             // --> KÁRTYA NEVÉBEN SZEREPLŐ AZONOSÍTÓ ALAPJÁN KELL LEKÉRDEZNI A SHOPOT
@@ -239,7 +239,7 @@ namespace Trello
         /**
          * Kap egy lista Id-t paraméterül, és megkeresi, hogy az melyik shophoz tartozik, ha egyikhez se, akkor nullal tér vissza
          * **/
-        static string? getShopByListId(string list)
+        public static string? GetShopByListId(string list)
         {
             var listIDs = Settings.GetLists();
             if (listIDs.Shoperia != null && listIDs.Home12 != null && listIDs.Xpress != null && listIDs.Matebike != null)
