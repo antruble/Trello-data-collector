@@ -1,10 +1,12 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Manatee.Trello;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using OfficeOpenXml;
 using OfficeOpenXml.Style;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection.Metadata.Ecma335;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
@@ -353,17 +355,39 @@ namespace Trello
 
                     // ADATOK SORONKÉNTI KITÖLTÉSE
                     int excelRow = worksheet.Dimension?.End.Row + 1 ?? 2;
+
+                    // TRELLO KÁRTYÁK LEKÉRÉSE
+                    string boardId = Settings.LoadSettings().BoardId ?? throw new Exception("Board ID can't be null");
+                    TrelloFactory factory = new TrelloFactory();
+                    var board = factory.Board(boardId);
+                    board.Lists.Refresh();
+                    var cards = board.Lists.SelectMany(l => l.Cards).ToList();
+
                     foreach (var dbRow in data)
                     {
-                        worksheet.Cells[excelRow, 1].Value = dbRow.Id;
-                        worksheet.Cells[excelRow, 2].Value = dbRow.Name;
-                        worksheet.Cells[excelRow, 3].Value = dbRow.Date.ToString("yyyy-MM-dd");
-                        worksheet.Cells[excelRow, 4].Value = dbRow.Weight;
-                        worksheet.Cells[excelRow, 5].Value = dbRow.IsComplete.ToString();
-                        string? shop = Utilities.GetShopByListId(dbRow.ListId ?? throw new Exception("ListID can't be null"));
-                        worksheet.Cells[excelRow, 6].Value = shop ?? "EGYÉB";
+                        var trelloCard = cards.Find(c => c.Id.Trim() == dbRow.Id?.Trim());
+                        if (trelloCard == null)
+                            Console.WriteLine($"NEM TALÁLT TASK: Név: \t {dbRow.Name}");
+                        else
+                        {
+                            worksheet.Cells[excelRow, 1].Value = dbRow.Id;
+                            worksheet.Cells[excelRow, 2].Value = dbRow.Name;
+                            worksheet.Cells[excelRow, 3].Value = trelloCard.CreationDate.ToString("yyyy-MM-dd");
+                            worksheet.Cells[excelRow, 4].Value = dbRow.IsComplete == true ? dbRow.Date.ToString("yyyy-MM-dd") : "";
+                            string weight = dbRow.Weight == 1 ? "W1"
+                                            : dbRow.Weight == 2 ? "W2"
+                                            : dbRow.Weight == 3 ? "W3"
+                                            : "UW";
+                            worksheet.Cells[excelRow, 5].Value = weight;
+                            worksheet.Cells[excelRow, 6].Value = dbRow.IsComplete.ToString();
+                            string? shop = Utilities.GetShopByListId(dbRow.ListId ?? throw new Exception("ListID can't be null"));
+                            worksheet.Cells[excelRow, 7].Value = shop ?? "EGYÉB";
 
-                        excelRow++;
+                            worksheet.Cells[excelRow, 8].Formula = $"=HYPERLINK(\"{trelloCard.Url}\", \"Feladat megnyitása..\")";
+                            worksheet.Cells[excelRow, 8].Style.Font.Color.SetColor(System.Drawing.Color.Blue);
+
+                            excelRow++;
+                        }
                     }
 
                     //AUTOMATIKUS CELLAMÉRETEZÉS, SZEGÉLY BEÁLLÍTÁSA
@@ -388,7 +412,7 @@ namespace Trello
 
                     package.Save();
                 }
-                catch { throw new Exception("Excel error while filling summary sheet"); }
+                catch (Exception ex) { throw new Exception("Excel error while filling summary sheet: ", ex); }
             }
         }
 
@@ -397,10 +421,12 @@ namespace Trello
             // FEJLÉCEK KITÖLTÉSE
             sheet.Cells[1, 1].Value = "ID";
             sheet.Cells[1, 2].Value = "Név";
-            sheet.Cells[1, 3].Value = "Dátum";
-            sheet.Cells[1, 4].Value = "Súlyozás";
-            sheet.Cells[1, 5].Value = "Befejezett?";
-            sheet.Cells[1, 6].Value = "Cég";
+            sheet.Cells[1, 3].Value = "Létrehozva";
+            sheet.Cells[1, 4].Value = "Elfogadva";
+            sheet.Cells[1, 5].Value = "Súlyozás";
+            sheet.Cells[1, 6].Value = "Befejezett?";
+            sheet.Cells[1, 7].Value = "Cég";
+            sheet.Cells[1, 8].Value = "Link";
         }
     }
 }
