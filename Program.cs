@@ -145,8 +145,10 @@ static async Task CheckLists(string boardId, string connectionstring)
                         {
                             dbCard.IsComplete = trelloCard.IsComplete;
                             // (A) EL LETT FOGADVA
-                            if (trelloCard.IsComplete == true)
+                            if (trelloCard.IsComplete == true) {
+                                dbCard.Date = (DateTime) trelloCard.LastActivity;
                                 Utilities.UpdateTes(dbContext, dbCard);
+                            }
                             // (B) ÚJRA LETT NYITVA
                             else
                                 Utilities.UpdateTes(dbContext, dbCard, "REMOVE");
