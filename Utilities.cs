@@ -10,43 +10,47 @@ namespace Trello
 {
     public class Utilities
     {
-        public static void UpdateTes(ApplicationDbContext dbContext, CardModel card, string operation="ADD")
+        /// <summary>
+        /// Frissíti a teljesített feladatok számát a megadott kártya alapján.
+        /// </summary>
+        /// <param name="dbContext">Az adatbázis kapcsolat változója.</param>
+        /// <param name="card">A kártya modell, amely alapján a frissítés történik.</param>
+        /// <param name="operation">Az operáció típusa: "ADD" a hozzáadáshoz, bármilyen más érték a kivonáshoz.</param>
+        /// <exception cref="Exception">Ha a kártya neve, azonosítója vagy lista azonosítója null, kivételt dob.</exception>
+        public static void UpdateTes(ApplicationDbContext dbContext, CardModel card, string operation = "ADD")
         {
+            // Ellenőrzi, hogy a kártya szükséges mezői nem null értékűek
             if (card.Name == null || card.Id == null || card.ListId == null)
-                throw new Exception("SimpleCardModel has null value");
+                throw new Exception("A kártya egyik kötelező mezője null értékű.");
 
+            // Kivonja az év és hónap értékét a kártya dátumából
             int year = card.Date.Year;
             int month = card.Date.Month;
 
+            // Megkeresi a megfelelő sort a 'Completed' táblában, ha nem találja, létrehozza
             var row = dbContext.Completed?.FirstOrDefault(e => e.Date == new DateTime(year, month, 1));
-
-            // HA ILYEN DÁTUM NEM SZEREPEL A DB-BEN -> LÉTRE KELL HOZNI
             if (row == null)
                 row = dbContext.AddDateToDB(year, month);
 
-            // SHOP LEKÉRDEZÉSE TRELLO LISTA ID ALAPJÁN
+            // Lekéri a shop nevét a lista azonosító alapján
             string? shop = GetShopByListId(card.ListId);
 
-            // HA A TRELLO LISTA ID ORDERSHEZ TARTOZIK -> TÖBB SHOP TASKJAI SZEREPELNEK BENNE ->
-            // --> KÁRTYA NEVÉBEN SZEREPLŐ AZONOSÍTÓ ALAPJÁN KELL LEKÉRDEZNI A SHOPOT
+            // Ha az adott lista azonosító az "ORDERS"-hez tartozik, akkor a kártya neve alapján lekéri a shop nevét
             if (shop == "ORDERS")
                 shop = getShopByCardName(card.Name);
 
-            // CALCHELPER === 1     -> KÁRTYA EL LETT FOGADVA   -> SZÁMLÁLÓT NÖVELNI KELL ||
-            // CALCHELPER === -1    -> KÁRTYA ÚJRA LETT NYITVA  -> SZÁMLÁLÓT CSÖKKENTENI KELL
+            // Meghatározza a számítás segítőjét; alapértelmezettként hozzáadást végez (érték: 1), kivonás esetén (nem "ADD") az érték: -1
             int calcHelper = 1;
-
-            // HA NEM "ADD" AZ OPERÁTOR, AKKOR KIVONNI KELL
             if (operation != "ADD")
                 calcHelper = -1;
 
-            // Csak akkor frissíthető az adat, ha valamelyik shop listájához tartozik
+            // Csak akkor frissíti az adatokat, ha a shop neve nem null
             if (shop != null)
             {
-                // ÖSSZESÍTETT SZÁMLÁLÓ NÖVELÉSE
+                // Összesített számláló növelése vagy csökkentése
                 row.AllCompleted += calcHelper;
 
-                // A MEGFELELŐ SHOP MEGFELELŐ SÚLYOZÁSÁNAK FRISSÍTÉSE
+                // A megfelelő shop és súlyozás szerinti számláló frissítése
                 switch (shop)
                 {
                     case "SHOPERIA":
@@ -122,15 +126,20 @@ namespace Trello
                         }
                         break;
                 }
+                // Az adatbázis változtatások mentése
                 dbContext.SaveChanges();
             }
         }
 
 
-        /**
-         * A paraméterben megkapott hónapban, a kapott list-nek megfelelő SHOP-ban, 
-         * a kapott labelId alapján frissíti a számlálót.
-         * **/
+        /// <summary>
+        /// A paraméterben megkapott hónapban, a kapott list-nek megfelelő SHOP-ban, a kapott labelId alapján frissíti a számlálót.
+        /// </summary>
+        /// <param name="date">A dátum, ahol frissítjük az értéket.</param>
+        /// <param name="listId">A bolt Trello lista ID-ja.</param>
+        /// <param name="cardName">A task neve</param>
+        /// <param name="weight">A task súlya</param>
+        /// <param name="operation">Az operáció típusa: "ADD" a hozzáadáshoz, bármilyen más érték a kivonáshoz.</param>
         public static void UpdateShopCounters(Completed date, string listId, string cardName, int weight, string operation = "ADD")
         {
             // SHOP LEKÉRDEZÉSE TRELLO LISTA ID ALAPJÁN
@@ -235,10 +244,10 @@ namespace Trello
                 }
             }
         }
-
-        /**
-         * Kap egy lista Id-t paraméterül, és megkeresi, hogy az melyik shophoz tartozik, ha egyikhez se, akkor nullal tér vissza
-         * **/
+        /// <summary>
+        /// Kap egy lista Id-t paraméterül, és megkeresi, hogy az melyik shophoz tartozik, ha egyikhez se, akkor nullal tér vissza
+        /// </summary>
+        /// <param name="list">Trello lista ID.</param>
         public static string? GetShopByListId(string list)
         {
             var listIDs = Settings.GetLists();
@@ -261,6 +270,10 @@ namespace Trello
             }
             return null;
         }
+        /// <summary>
+        /// Az alábbi függvény az ORDERS listának a segédfüggvénye, ahol a task nevének első szakasza azonosítja a boltot. A függvény megkeresi, hogy melyik shophoz tartozik az adott kártyanév, ha egyikhez se, akkor nullal tér vissza
+        /// </summary>
+        /// <param name="cardName">Task neve.</param>
         static string? getShopByCardName(string cardName) 
         { 
             string shopId = cardName.Split('-')[0];
@@ -278,6 +291,10 @@ namespace Trello
             return null;
         }
 
+        /// <summary>
+        /// A paraméterben megadott labelek alapján visszaadja, hogy milyen a projekt fontossági súlya
+        /// </summary>
+        /// <param name="labels">Task neve.</param>
         public static int GetWeightFromLabels(List<string> labels) 
         {
             var weightedLabels = Settings.GetLabels();

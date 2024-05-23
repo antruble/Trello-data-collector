@@ -22,6 +22,12 @@ await CheckLists(settings.BoardId, settings.ConnectionString);
 //EXCELBE ÍRÁS
 Excel.WriteToExcel();
 
+
+/// <summary>
+/// Ellenőrzi és szinkronizálja a Trello listákat és kártyákat az SQL adatbázissal.
+/// </summary>
+/// <param name="boardId">A Trello board id-ja.</param>
+/// <param name="connectionstring">Az SQL adatbázis connection stringje.</param>
 static async Task CheckLists(string boardId, string connectionstring)
 {
     // <trello beállítása>
@@ -70,32 +76,35 @@ static async Task CheckLists(string boardId, string connectionstring)
                     if (trelloCard.IsArchived == true)
                         break;
 
-                    // ADOTT TRELLO KÁRTYA MEGKERESÉSE LISTÁBAN
+                    // A DBLIST A JELENLEG VIZSGÁLT TRELLO LISTA ELTÁROLVA AZ ADATBÁZISBAN. MEGPRÓBÁLJUK MEGKERESNI AZ ADATBÁZIS LISTÁBAN A VIZSGÁLT TRELLO KÁRTYÁT
                     var dbCard = dbList.Cards?.FirstOrDefault(c => c.Id?.Trim() == trelloCard.Id.Trim());
-                    // NEM LÉTEZIK A KÁRTYA AZ ADOTT LISTÁBAN -> ( A ) ÁTKERÜLT MÁSIK LISTÁBA ( B ) MÉG NEM LÉTEZIK
+                    // A TRELLÓBÓL LEKÉRT TASK LISTÁJÁT MEGVIZSGÁLJUK AZ ADATBÁZISBAN, ÉS HA NEM TALÁLJUK BENNE A VIZSGÁLT KÁRTYÁT ->
+                    // ( A ) ÁTKERÜLT MÁSIK LISTÁBA
+                    // ( B ) MÉG NEM LÉTEZIK
                     if (dbCard == null)
                     {
                         DateTime? oldDate = null;
-                        // TRELLOKÁRTYA MEGKERESÉSE A DB ÖSSZES KÁRTYA LISTÁJÁBÓL
-                        var temp = dbContext.Cards?.FirstOrDefault(c => c.Id.Trim() == trelloCard.Id.Trim());
-                        // HA A TEMP NEM NULL, AKKOR A KÁRTYA MÁR RÖGZÍTVE VAN -> ÚJ LISTÁBA KERÜLT -> FRISSÍTENI KELL
-                        if (temp != null)
+                        // TRELLOKÁRTYA MEGKERESÉSE A DB ÖSSZES KÁRTYÁI KÖZÜL
+                        var cardInDB = dbContext.Cards?.FirstOrDefault(c => c.Id.Trim() == trelloCard.Id.Trim());
+                        // HA A cardInDB NEM NULL, AKKOR A KÁRTYA MÁR RÖGZÍTVE VAN -> ÚJ LISTÁBA KERÜLT -> FRISSÍTENI KELL
+                        if (cardInDB != null)
                         {
-                            // HA A KÁRTYA EL VAN FOGADVA, ÉS ÚGY LETT ELMOZGATVA
+                            // HA A KÁRTYA EL VOLT FOGADVA, ÉS ÚGY LETT ELMOZGATVA
                             // ˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇˇ
                             // (1) AZ ELŐZŐ LISTA SZÁMLÁLÓJÁBÓL KI KELL SZEDNI
                             // (2) AZ ELFOGADÁS DÁTUMÁT EL KELL TÁROLNI, AMIT MÁR CSAK AZ ADATBÁZIS TÁROL
                             //     (A MÁSIK LISTÁBAN EZT A HÓNAPOT KELL FRISSÍTENI)
                             // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                            if (temp.IsComplete == true)
-                                Utilities.UpdateTes(dbContext, temp, "REMOVE");
+                            if (cardInDB.IsComplete == true) // (1) HA A TASK AZ ADATBÁZISBAN EL VAN FOGADVA, AKKOR KI KELL TÖRÖLNI A RÉGI LISTÁJÁHOZ TARTOZÓ BOLT SZÁMLÁLÓJÁBÓL
+                                Utilities.UpdateTes(dbContext, cardInDB, "REMOVE");
 
-                            // NEM SZERETNÉNK FRISSÍTENI A DÁTUMOT, KIVÉVE, HA MOZGATÁS KÖZBEN EL IS LETT FOGADVA
-                            oldDate = temp.IsComplete == false && trelloCard.IsComplete == true ? null : temp.Date;
+                            // NEM SZERETNÉNK FRISSÍTENI A TASKHOZ TARTOZÓ DÁTUMOT, KIVÉVE, HA MOZGATÁS UTÁN LETT ELFOGADVA (A NULL ÉRTÉK JELZI, HOGY DÁTUMOT KELL MAJD ÁLLÍTANUNK)
+                            oldDate = cardInDB.IsComplete == false && trelloCard.IsComplete == true ? null : cardInDB.Date;
 
-                            // KÁRTYA KITÖRLÉSE DB-BŐL
-                            dbContext.DeleteCard(temp);
+                            // A TASK KITÖRLÉSE AZ ADATBÁZISBÓL, MIVEL ELAVULT LISTÁBAN VAN
+                            dbContext.DeleteCard(cardInDB);
                             dbContext.SaveChanges();
+                            // MIUTÁN TÖRÖLTÜK AZ ADATBÁZISBÓL AZ ELAVULT ADATOT, EZÉRT MOSTMÁR AKÁR ÚJ A KÁRTYA, AKÁR MÁR LÉTEZETT, UGYANÚGY BÁNUNK VELE
                         }
                         // SÚLYOZÁS KISZÁMOLÁSA
                         int weight;
@@ -109,6 +118,7 @@ static async Task CheckLists(string boardId, string connectionstring)
 
                             weight = Utilities.GetWeightFromLabels(labelIDs);
                         };
+                        // TRELLOHOZ SZÜKSÉGES MODEL LÉTREHOZÁSA
                         var newCard = new CardModel
                         {
                             Id = trelloCard.Id,
@@ -120,15 +130,15 @@ static async Task CheckLists(string boardId, string connectionstring)
                             ListId = trelloList.Id,
                         };
                         // A KÁRTYA MÁR EL LETT FOGADVA MIELŐTT BEKERÜLT VOLNA A DB-BE -> DOKUMENTÁLNI KELL
-                        if (trelloCard.IsComplete == true)
+                        if (newCard.IsComplete == true)
                             Utilities.UpdateTes(dbContext, newCard);
                         dbList.Cards?.Add(newCard);
                         dbContext.SaveChanges();
                     }
-                    // LÉTEZIK A KÁRTYA 
+                    // LÉTEZIK A KÁRTYA ÉS JÓ LISTÁBAN SZEREPEL
                     else 
                     {
-                        // A KÁRTYÁN LÉVŐ LABELEK KÖZÜL KIVÁLASZTJUK A LEGNAGYOBB FONTOSSÁGI SÚLYÚT
+                        // KISZÁMOLJUK A SÚLYOZÁSÁT
                         int weight;
                         if (trelloCard.Labels == null)
                             weight = 0;
@@ -140,7 +150,9 @@ static async Task CheckLists(string boardId, string connectionstring)
                             weight = Utilities.GetWeightFromLabels(labelIDs);
                         }
 
-                        // [(A) TRELLOBAN EL LETT FOGADVA || (B) TRELLOBAN ÚJRA LETT NYITVA] => DOKUMENTÁLNI KELL
+                        // HA A TRELLOBAN ELTÉR A TASK ELFOGADÁSI STÁTUSZA AZ ADATBÁZISHOZ KÉPEST
+                        // (A) TRELLOBAN EL LETT FOGADVA  => NÖVELNI KELL A SZÁMLÁLÓT
+                        // (B) TRELLOBAN ÚJRA LETT NYITVA => CSÖKKENTENI KELL A SZÁMLÁLÓT
                         if (trelloCard.IsComplete != dbCard.IsComplete)
                         {
                             dbCard.IsComplete = trelloCard.IsComplete;
@@ -182,40 +194,51 @@ static async Task CheckLists(string boardId, string connectionstring)
     }
 }
 
-static void CheckDatabaseTables(ApplicationDbContext dbContext) 
+/// <summary>
+/// Ellenőrzi az adatbázis tábláit, és ha valamelyik hiányzik, létrehozza azokat.
+/// </summary>
+/// <param name="dbContext">Az adatbázis kapcsolat változója.</param>
+static void CheckDatabaseTables(ApplicationDbContext dbContext)
 {
-    try 
+    try
     {
+        // Kapcsolat létrehozása az adatbázishoz
         var connection = dbContext.Database.GetDbConnection();
         connection.Open();
         var command = connection.CreateCommand();
 
-        // TÁBLÁS LEKÉRDEZÉSE, HA NEM LÉTEZIK FALSE-SZAL TÉR VISSZA
+        // Lekérdezés az 'Lists' tábla létezésére, ha nem létezik false-szal tér vissza
         command.CommandText = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Lists'";
         bool isListsTableExist = (Convert.ToInt32(command.ExecuteScalar()) <= 0);
+
+        // Lekérdezés a 'Cards' tábla létezésére, ha nem létezik false-szal tér vissza
         command.CommandText = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Cards'";
         bool isCardsTableExist = (Convert.ToInt32(command.ExecuteScalar()) <= 0);
+
+        // Lekérdezés a 'Completed' tábla létezésére, ha nem létezik false-szal tér vissza
         command.CommandText = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Completed'";
         bool isCompletedTableExist = (Convert.ToInt32(command.ExecuteScalar()) <= 0);
         connection.Close();
 
-        // NEM LÉTEZIK LISTS TÁBLA AZ ADATBÁZISBAN -> LÉTRE KELL HOZNI
+        // Ha nem létezik 'Lists' tábla az adatbázisban -> létre kell hozni
         if (isListsTableExist)
             dbContext.CreateTable("Lists");
-        // NEM LÉTEZIK CARDS TÁBLA AZ ADATBÁZISBAN -> LÉTRE KELL HOZNI
+
+        // Ha nem létezik 'Cards' tábla az adatbázisban -> létre kell hozni
         if (isCardsTableExist)
             dbContext.CreateTable("Cards");
-        // NEM LÉTEZIK COMPLETED TÁBLA AZ ADATBÁZISBAN -> LÉTRE KELL HOZNI
+
+        // Ha nem létezik 'Completed' tábla az adatbázisban -> létre kell hozni
         if (isCompletedTableExist)
             dbContext.CreateTable("Completed");
-    } 
+    }
     catch (Exception ex)
     {
-        Console.WriteLine("Database table create error: " + ex.Message);
+        // Hiba esetén hibaüzenet kiírása
+        Console.WriteLine("Adatbázis tábla létrehozási hiba: " + ex.Message);
     }
-
-    
 }
+
 
 
 
