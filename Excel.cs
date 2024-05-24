@@ -196,7 +196,6 @@ namespace Trello
                 sheet.Cells[excelRow, 7 + i * 5].Value = "UW";
             }
         }
-
         static void SetSummarySheetFormats(ExcelWorksheet sheet)
         {
             //PALETTA
@@ -415,7 +414,6 @@ namespace Trello
                 catch (Exception ex) { throw new Exception("Excel error while filling summary sheet: ", ex); }
             }
         }
-
         static void CreateBaseCardsSheet(ExcelWorksheet sheet)
         {
             // FEJLÉCEK KITÖLTÉSE
@@ -428,5 +426,6 @@ namespace Trello
             sheet.Cells[1, 7].Value = "Cég";
             sheet.Cells[1, 8].Value = "Link";
         }
+    
     }
 }

@@ -1,6 +1,9 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Serilog.Core;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -17,7 +20,7 @@ namespace Trello
         /// <param name="card">A kártya modell, amely alapján a frissítés történik.</param>
         /// <param name="operation">Az operáció típusa: "ADD" a hozzáadáshoz, bármilyen más érték a kivonáshoz.</param>
         /// <exception cref="Exception">Ha a kártya neve, azonosítója vagy lista azonosítója null, kivételt dob.</exception>
-        public static void UpdateTes(ApplicationDbContext dbContext, CardModel card, string operation = "ADD")
+        public static void UpdateTes(ApplicationDbContext dbContext, CardModel card, ILogger logger, string operation = "ADD")
         {
             // Ellenőrzi, hogy a kártya szükséges mezői nem null értékűek
             if (card.Name == null || card.Id == null || card.ListId == null)
@@ -27,10 +30,13 @@ namespace Trello
             int year = card.Date.Year;
             int month = card.Date.Month;
 
-            // Megkeresi a megfelelő sort a 'Completed' táblában, ha nem találja, létrehozza
+            // Megkeresi a megfelelő dátumot (sort) a 'Completed' táblában, ha nem találja, létrehozza
             var row = dbContext.Completed?.FirstOrDefault(e => e.Date == new DateTime(year, month, 1));
             if (row == null)
+            {
                 row = dbContext.AddDateToDB(year, month);
+                logger.LogInformation("{year} - {month} dátum hozzáadása a Completed táblához", year, month);
+            }
 
             // Lekéri a shop nevét a lista azonosító alapján
             string? shop = GetShopByListId(card.ListId);
@@ -127,20 +133,36 @@ namespace Trello
                         break;
                 }
                 // Az adatbázis változtatások mentése
-                dbContext.SaveChanges();
+                try
+                {
+                    dbContext.SaveChanges();
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception($"Error az adatbázisba mentés közben: {ex.Message}");
+                }
+                if (calcHelper == 1)
+                {
+                    logger.LogInformation("SZÁMLÁLÓ NÖVELVE | bolt: {shop}, év: {year}, hónap: {month}, súly: {weight}, taskId: {id}, taskName: {name}, taskDate: {date}",
+                        shop, year, month, card.Weight, card.Id, card.Name, card.Date.ToString("yyyy-MM-dd"));
+                }
+                else
+                {
+                    logger.LogInformation("SZÁMLÁLÓ CSÖKKENTVE | bolt: {shop}, év: {year}, hónap: {month}, súly: {weight}, taskId: {id}, taskName: {name}, taskDate: {date}",
+                        shop, year, month, card.Weight, card.Id, card.Name, card.Date.ToString("yyyy-MM-dd"));
+                }
+
             }
         }
-
-
         /// <summary>
-        /// A paraméterben megkapott hónapban, a kapott list-nek megfelelő SHOP-ban, a kapott labelId alapján frissíti a számlálót.
+        /// (BEÉPÍTETT SEGÉDFÜGGVÉNY) A paraméterben megkapott hónapban, a kapott list-nek megfelelő SHOP-ban, a kapott labelId alapján frissíti a számlálót.
         /// </summary>
         /// <param name="date">A dátum, ahol frissítjük az értéket.</param>
         /// <param name="listId">A bolt Trello lista ID-ja.</param>
         /// <param name="cardName">A task neve</param>
         /// <param name="weight">A task súlya</param>
         /// <param name="operation">Az operáció típusa: "ADD" a hozzáadáshoz, bármilyen más érték a kivonáshoz.</param>
-        public static void UpdateShopCounters(Completed date, string listId, string cardName, int weight, string operation = "ADD")
+        public static void UpdateShopCounters(Completed date, string listId, string cardName, int weight, ILogger logger, string operation = "ADD")
         {
             // SHOP LEKÉRDEZÉSE TRELLO LISTA ID ALAPJÁN
             string? shop = GetShopByListId(listId);
@@ -149,9 +171,6 @@ namespace Trello
             // --> KÁRTYA NEVÉBEN SZEREPLŐ AZONOSÍTÓ ALAPJÁN KELL LEKÉRDEZNI A SHOPOT
             if (shop == "ORDERS")
                 shop = getShopByCardName(cardName);
-
-            // FONTOSSÁGI SÚLYOK LEKÉRÉSE
-            var labels = Settings.GetLabels();
 
             // CALCHELPER === 1     -> KÁRTYA EL LETT FOGADVA   -> SZÁMLÁLÓT NÖVELNI KELL ||
             // CALCHELPER === -1    -> KÁRTYA ÚJRA LETT NYITVA  -> SZÁMLÁLÓT CSÖKKENTENI KELL
@@ -170,8 +189,8 @@ namespace Trello
                 switch (shop)
                 {
                     case "SHOPERIA":
-                        date.ShoperiaAllCompleted+= calcHelper;
-                        switch (weight) 
+                        date.ShoperiaAllCompleted += calcHelper;
+                        switch (weight)
                         {
                             case 0:
                                 date.Shoperia_UnWeighted += calcHelper;
@@ -206,11 +225,11 @@ namespace Trello
                         }
                         return;
                     case "MATEBIKE":
-                        date.MatebikeAllCompleted+= calcHelper;
+                        date.MatebikeAllCompleted += calcHelper;
                         switch (weight)
                         {
                             case 0:
-                                date.Matebike_UnWeighted+= calcHelper;
+                                date.Matebike_UnWeighted += calcHelper;
                                 break;
                             case 1:
                                 date.Matebike_W1 += calcHelper;
@@ -241,6 +260,16 @@ namespace Trello
                                 break;
                         }
                         return;
+                }
+                if (calcHelper == 1)
+                {
+                    logger.LogInformation("SZÁMLÁLÓ NÖVELVE | bolt: {shop}, év: {year}, hónap: {month}, súly: {weight}, taskName: {name}",
+                        shop, date.Date.Year, date.Date.Month, weight, cardName);
+                }
+                else
+                {
+                    logger.LogInformation("SZÁMLÁLÓ CSÖKKENTVE | bolt: {shop}, év: {year}, hónap: {month}, súly: {weight}, taskName: {name}",
+                        shop, date.Date.Year, date.Date.Month, weight, cardName);
                 }
             }
         }
@@ -274,10 +303,10 @@ namespace Trello
         /// Az alábbi függvény az ORDERS listának a segédfüggvénye, ahol a task nevének első szakasza azonosítja a boltot. A függvény megkeresi, hogy melyik shophoz tartozik az adott kártyanév, ha egyikhez se, akkor nullal tér vissza
         /// </summary>
         /// <param name="cardName">Task neve.</param>
-        static string? getShopByCardName(string cardName) 
-        { 
+        static string? getShopByCardName(string cardName)
+        {
             string shopId = cardName.Split('-')[0];
-            switch (shopId) 
+            switch (shopId)
             {
                 case "SH":
                     return "SHOPERIA";
@@ -295,11 +324,11 @@ namespace Trello
         /// A paraméterben megadott labelek alapján visszaadja, hogy milyen a projekt fontossági súlya
         /// </summary>
         /// <param name="labels">Task neve.</param>
-        public static int GetWeightFromLabels(List<string> labels) 
+        public static int GetWeightFromLabels(List<string> labels)
         {
             var weightedLabels = Settings.GetLabels();
             int tempMax = 0;
-            foreach (string label in labels) 
+            foreach (string label in labels)
             {
                 if (label == weightedLabels.Weight3)
                     return 3;
@@ -310,6 +339,27 @@ namespace Trello
             }
             return tempMax;
 
+        }
+        public static void RefreshCompletedTableByStoredTasks(ApplicationDbContext dbContext, ILogger logger) 
+        {
+            
+            try
+            {
+                // ÖSSZES TASK LEKÉRDEZÉSE AZ ADATBÁZISBÓL
+                var tasksInDB = dbContext.Cards ?? throw new Exception("Hiba történt a taskok lekérdezése közben az adatbázisból (null értékkel tért vissza)");
+                foreach (var task in tasksInDB)
+                {
+                    if (task.IsComplete == true)
+                    {
+
+                    }
+                }
+            }
+            catch (Exception)
+            {
+
+                throw;
+            }
         }
     }
 }
